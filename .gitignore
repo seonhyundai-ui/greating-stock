@@ -1,0 +1,19 @@
+# Google OAuth
+credentials.json
+token.json
+
+# Environment
+.env
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.pyc
+
+# Local data
+data/
+*.csv
+
+# Streamlit
+.streamlit/secrets.toml

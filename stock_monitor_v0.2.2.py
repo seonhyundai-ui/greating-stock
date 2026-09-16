@@ -59,10 +59,7 @@ CREDENTIALS_FILE = BASE_DIR / "credentials.json"
 TOKEN_FILE = BASE_DIR / "token.json"
 
 # v0.2.0에서 사용한 동일한 ID 입력
-SPREADSHEET_ID = os.getenv(
-    "GREATING_SPREADSHEET_ID",
-    "ZXXsaPjURyajBY27VdsN5DKjf9rMDrRcDxq78zA0g",
-)
+SPREADSHEET_ID = "ZXXsaPjURyajBY27VdsN5DKjf9rMDrRcDxq78zA0g"
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",

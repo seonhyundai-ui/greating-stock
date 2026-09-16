@@ -39,7 +39,5 @@ jobs:
           echo "$GOOGLE_TOKEN_B64" | base64 --decode > token.json
 
       - name: Run Greating stock monitor
-        env:
-          GREATING_SPREADSHEET_ID: ${{ secrets.GREATING_SPREADSHEET_ID }}
         run: |
           python stock_monitor_v0.2.2.py

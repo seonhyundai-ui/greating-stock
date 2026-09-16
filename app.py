@@ -1,5 +1,6 @@
 import hmac
 import base64
+import json
 import pandas as pd
 import streamlit as st
 import gspread
@@ -14,7 +15,7 @@ from google.auth.transport.requests import Request
 
 # ============================================================
 # Greating Stock Monitor Dashboard
-# version: 0.1.2
+# version: 0.1.3
 #
 # Data Source
 # ------------------------------------------------------------
@@ -23,16 +24,18 @@ from google.auth.transport.requests import Request
 #   - STOCK_EVENT
 #   - RUN_LOG
 #
-# v0.1.2
+# v0.1.3
 # ------------------------------------------------------------
-# 1. 첫 화면 비밀번호 로그인 추가
+# 1. 첫 화면 비밀번호 로그인 유지
 # 2. 로그인 전 Google Sheets 데이터 접근 차단
-# 3. 로그인 세션 유지 / 로그아웃 버튼 추가
-# 4. v0.1.1 대시보드 기능 전체 유지
+# 3. Streamlit Cloud에서는 GOOGLE_TOKEN_B64 Secret으로 Google 인증
+# 4. 로컬에서는 기존 token.json / credentials.json OAuth 방식 유지
+# 5. 로그인 세션 유지 / 로그아웃 버튼 유지
+# 6. v0.1.2 대시보드 기능 전체 유지
 # ============================================================
 
 
-VERSION = "0.1.2"
+VERSION = "0.1.3"
 
 KST = timezone(
     timedelta(hours=9)
@@ -367,40 +370,51 @@ def get_credentials():
     creds = None
 
     # ========================================================
-    # 1. Streamlit Cloud / Secrets 사용
+    # 1. Streamlit Cloud
+    # GOOGLE_TOKEN_B64 Secret이 있으면 메모리에서 Credentials 생성
     # ========================================================
 
-    try:
-        credentials_b64 = st.secrets.get(
-            "GOOGLE_CREDENTIALS_B64"
-        )
+    token_b64 = None
 
+    try:
         token_b64 = st.secrets.get(
             "GOOGLE_TOKEN_B64"
         )
-
     except Exception:
-        credentials_b64 = None
         token_b64 = None
 
     if token_b64:
 
-        token_json = base64.b64decode(
-            token_b64
-        ).decode("utf-8")
-
-        creds = (
-            Credentials
-            .from_authorized_user_info(
-                __import__("json").loads(
-                    token_json
-                ),
-                SCOPES,
+        try:
+            token_json = (
+                base64.b64decode(
+                    token_b64
+                )
+                .decode("utf-8")
             )
-        )
+
+            token_info = json.loads(
+                token_json
+            )
+
+            creds = (
+                Credentials
+                .from_authorized_user_info(
+                    token_info,
+                    SCOPES,
+                )
+            )
+
+        except Exception as e:
+
+            raise RuntimeError(
+                "Streamlit Secret의 GOOGLE_TOKEN_B64를 읽지 못했습니다. "
+                "token.json을 다시 Base64로 변환해 Secret 값을 확인해주세요."
+            ) from e
 
     # ========================================================
-    # 2. 로컬에서는 기존 token.json 사용
+    # 2. Local
+    # 로컬에서는 기존 token.json 사용
     # ========================================================
 
     elif TOKEN_FILE.exists():
@@ -414,7 +428,7 @@ def get_credentials():
         )
 
     # ========================================================
-    # Token refresh
+    # 3. 만료 토큰 Refresh
     # ========================================================
 
     if (
@@ -428,7 +442,7 @@ def get_credentials():
             Request()
         )
 
-        # 로컬 환경일 때만 token.json 갱신
+        # 로컬 실행 시에만 갱신 토큰 저장
         if TOKEN_FILE.exists():
 
             TOKEN_FILE.write_text(
@@ -437,12 +451,12 @@ def get_credentials():
             )
 
     # ========================================================
-    # Cloud에서 token이 없으면 실패
+    # 4. 인증정보가 아직 없는 경우
+    # 로컬 최초 실행만 브라우저 OAuth 허용
     # ========================================================
 
     if not creds:
 
-        # 로컬 OAuth 로그인 허용
         if CREDENTIALS_FILE.exists():
 
             flow = (
@@ -467,7 +481,9 @@ def get_credentials():
         else:
 
             raise RuntimeError(
-                "Google OAuth 인증정보가 없습니다."
+                "Google 인증정보가 없습니다. "
+                "Streamlit Cloud에서는 GOOGLE_TOKEN_B64 Secret을, "
+                "로컬에서는 token.json 또는 credentials.json을 확인해주세요."
             )
 
     return creds

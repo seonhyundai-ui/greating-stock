@@ -1,3 +1,5 @@
+import hmac
+
 import pandas as pd
 import streamlit as st
 import gspread
@@ -12,7 +14,7 @@ from google.auth.transport.requests import Request
 
 # ============================================================
 # Greating Stock Monitor Dashboard
-# version: 0.1.1
+# version: 0.1.2
 #
 # Data Source
 # ------------------------------------------------------------
@@ -21,18 +23,16 @@ from google.auth.transport.requests import Request
 #   - STOCK_EVENT
 #   - RUN_LOG
 #
-# v0.1.1
+# v0.1.2
 # ------------------------------------------------------------
-# 1. 현재 품절 상품을 품절 임박보다 상단 배치
-# 2. 상품 관련 모든 표에 상품ID 추가
-# 3. 오늘의 변화:
-#    이벤트 | 상품ID | 상품명 | 재고 변화 | 시간 | 배송일
-# 4. 운영 현황 아래:
-#    카테고리 + 상품명 검색
+# 1. 첫 화면 비밀번호 로그인 추가
+# 2. 로그인 전 Google Sheets 데이터 접근 차단
+# 3. 로그인 세션 유지 / 로그아웃 버튼 추가
+# 4. v0.1.1 대시보드 기능 전체 유지
 # ============================================================
 
 
-VERSION = "0.1.1"
+VERSION = "0.1.2"
 
 KST = timezone(
     timedelta(hours=9)
@@ -80,6 +80,96 @@ st.set_page_config(
     page_icon="📦",
     layout="wide",
 )
+
+
+# ============================================================
+# Login
+# ============================================================
+
+def check_login():
+
+    if st.session_state.get(
+        "authenticated",
+        False,
+    ):
+        return True
+
+    spacer_left, login_col, spacer_right = (
+        st.columns([1, 1.2, 1])
+    )
+
+    with login_col:
+
+        st.title(
+            "📦 Greating Stock Monitor"
+        )
+
+        st.caption(
+            "그리팅 건강마켓 재고 및 품절 모니터링"
+        )
+
+        st.markdown(
+            "접근을 위해 비밀번호를 입력해주세요."
+        )
+
+        with st.form(
+            "login_form",
+            clear_on_submit=False,
+        ):
+
+            password = st.text_input(
+                "비밀번호",
+                type="password",
+                placeholder="비밀번호 입력",
+            )
+
+            submitted = (
+                st.form_submit_button(
+                    "로그인",
+                    use_container_width=True,
+                )
+            )
+
+        if submitted:
+
+            try:
+                correct_password = str(
+                    st.secrets[
+                        "APP_PASSWORD"
+                    ]
+                )
+
+            except Exception:
+
+                st.error(
+                    "APP_PASSWORD 설정이 없습니다. "
+                    "Streamlit Secrets를 확인해주세요."
+                )
+
+                return False
+
+            if hmac.compare_digest(
+                str(password),
+                correct_password,
+            ):
+
+                st.session_state[
+                    "authenticated"
+                ] = True
+
+                st.rerun()
+
+            else:
+
+                st.error(
+                    "비밀번호가 올바르지 않습니다."
+                )
+
+    return False
+
+
+if not check_login():
+    st.stop()
 
 
 # ============================================================
@@ -726,16 +816,16 @@ st.caption(
 
 
 # ============================================================
-# Refresh
+# Refresh / Logout
 # ============================================================
 
-top_left, top_right = (
+top_left, refresh_col, logout_col = (
     st.columns(
-        [5, 1]
+        [5, 1, 1]
     )
 )
 
-with top_right:
+with refresh_col:
 
     if st.button(
         "↻ 새로고침",
@@ -743,6 +833,20 @@ with top_right:
     ):
 
         st.cache_data.clear()
+
+        st.rerun()
+
+
+with logout_col:
+
+    if st.button(
+        "로그아웃",
+        use_container_width=True,
+    ):
+
+        st.session_state[
+            "authenticated"
+        ] = False
 
         st.rerun()
 
@@ -1510,7 +1614,6 @@ st.subheader(
 )
 
 st.caption(
-    "파일럿 기준: 현재 재고 1~10개 · "
     "CRITICAL 1~5개 / LOW 6~10개"
 )
 
@@ -1640,7 +1743,7 @@ st.divider()
 # ============================================================
 
 st.subheader(
-    "🕒 오늘의 변화"
+    "🕒 오늘의 변화(품절 및 재입고)"
 )
 
 

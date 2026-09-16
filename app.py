@@ -1,5 +1,5 @@
 import hmac
-
+import base64
 import pandas as pd
 import streamlit as st
 import gspread
@@ -366,7 +366,44 @@ def get_credentials():
 
     creds = None
 
-    if TOKEN_FILE.exists():
+    # ========================================================
+    # 1. Streamlit Cloud / Secrets 사용
+    # ========================================================
+
+    try:
+        credentials_b64 = st.secrets.get(
+            "GOOGLE_CREDENTIALS_B64"
+        )
+
+        token_b64 = st.secrets.get(
+            "GOOGLE_TOKEN_B64"
+        )
+
+    except Exception:
+        credentials_b64 = None
+        token_b64 = None
+
+    if token_b64:
+
+        token_json = base64.b64decode(
+            token_b64
+        ).decode("utf-8")
+
+        creds = (
+            Credentials
+            .from_authorized_user_info(
+                __import__("json").loads(
+                    token_json
+                ),
+                SCOPES,
+            )
+        )
+
+    # ========================================================
+    # 2. 로컬에서는 기존 token.json 사용
+    # ========================================================
+
+    elif TOKEN_FILE.exists():
 
         creds = (
             Credentials
@@ -376,31 +413,37 @@ def get_credentials():
             )
         )
 
+    # ========================================================
+    # Token refresh
+    # ========================================================
+
     if (
-        not creds
-        or not creds.valid
+        creds
+        and not creds.valid
+        and creds.expired
+        and creds.refresh_token
     ):
 
-        if (
-            creds
-            and creds.expired
-            and creds.refresh_token
-        ):
+        creds.refresh(
+            Request()
+        )
 
-            creds.refresh(
-                Request()
+        # 로컬 환경일 때만 token.json 갱신
+        if TOKEN_FILE.exists():
+
+            TOKEN_FILE.write_text(
+                creds.to_json(),
+                encoding="utf-8",
             )
 
-        else:
+    # ========================================================
+    # Cloud에서 token이 없으면 실패
+    # ========================================================
 
-            if (
-                not
-                CREDENTIALS_FILE.exists()
-            ):
+    if not creds:
 
-                raise FileNotFoundError(
-                    "credentials.json이 없습니다."
-                )
+        # 로컬 OAuth 로그인 허용
+        if CREDENTIALS_FILE.exists():
 
             flow = (
                 InstalledAppFlow
@@ -416,10 +459,16 @@ def get_credentials():
                 )
             )
 
-        TOKEN_FILE.write_text(
-            creds.to_json(),
-            encoding="utf-8",
-        )
+            TOKEN_FILE.write_text(
+                creds.to_json(),
+                encoding="utf-8",
+            )
+
+        else:
+
+            raise RuntimeError(
+                "Google OAuth 인증정보가 없습니다."
+            )
 
     return creds
 
